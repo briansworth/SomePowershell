@@ -1,2 +1,2 @@
 # SomePowershell
-Some useful (hopefully) powershell commands/modules
+Some useful (hopefully) PowerShell commands/modules.
