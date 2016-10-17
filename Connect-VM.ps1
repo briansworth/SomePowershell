@@ -26,15 +26,8 @@
 .Parameter VMName
     The name of a Virtual Machine in Hyper-V. Not necessarilly the hostname.
 
-.Parameter ID
+.Parameter VMId
     The GUID/VMId of a virtual Machine in Hyper-V.
-
-.Parameter Hostname
-    Or 'computername'.  The host machine with Hyper-V role installed on it,
-    in which these virtual machines reside.
-
-.Parameter InputObject
-    A VM Object (generally retrieved from Get-VM).
 #>
 Function Connect-VM {
     [CmdletBinding(DefaultParameterSetName="VMName")]
