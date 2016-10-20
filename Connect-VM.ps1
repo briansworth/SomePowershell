@@ -51,7 +51,7 @@ Function Connect-VM {
         [alias('Id')]
         [Guid]$VMId,
         [Parameter(
-            Position=1,
+            Position=0,
             ValueFromPipelineByPropertyName=$true
         )]
         [ValidateNotNullOrEmpty()]
@@ -60,14 +60,14 @@ Function Connect-VM {
     Begin{
     }
     Process{
-        if($VMName){
-            Write-Verbose 'VMName'
+        if($PSBoundParameters.ContainsKey('VMName')){
+            Write-Verbose "Connecting to VMName [$VMName]"
             vmconnect.exe $ComputerName $VMName
             $VMName=$null
-        }elseif($VMId){
-            Write-Verbose 'VMId'
+        }elseif($PSBoundParameters.ContainsKey('VMId')){
+            Write-Verbose "Connecting to VMId [$VMId]"
             vmconnect.exe $ComputerName -g $VMId
-            $VMId=$null
+            Remove-Variable VMId
         }
     }
     End{
