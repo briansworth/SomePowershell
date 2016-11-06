@@ -21,14 +21,6 @@ function GuidToLDAPString([Guid]$guid) {
      return $byteStr
 }
 
-function LDAPGuidToByteArray([DirectoryServices.PropertyValueCollection]$guidArr){
-    [Byte[]]$byteArr=New-Object -TypeName Collections.ArrayList
-    foreach ($byte in $guidArr ){
-        $byteArr+=$byte
-    }
-    return $byteArr
-}
-
 function ConvertBytesToSID ([Byte[]]$byteArr){
     $sid=New-Object `
       -TypeName Security.Principal.SecurityIdentifier($byteArr,0)
@@ -104,22 +96,20 @@ function Get-UserAccount {
                 -ErrorAction Stop
         }
         [DirectoryServices.DirectoryEntry]$entry=LDAPQuery -identity $identity
-        [Byte[]]$guidByteArr=LDAPGuidToByteArray -guidArr $entry.objectGuid
         [String]$sid=ConvertBytesToSID -byteArr ($entry | Select -expand objectSid)
         [bool]$enabled=isAccountEnabled `
-          -userAccountControl ($entry | 
-            Select -ExpandProperty userAccountControl)
+          -userAccountControl $entry.userAccountControl.Value
 
-        [PSObject]$out=New-Object -TypeName PSObject -Property @{
-            DistinguishedName=$($entry | Select -expand distinguishedName);
-            Name=$($entry | Select -expand name);
-            GivenName=$($entry | Select -expand givenName);
-            Surname=$($entry | Select -expand sn);
+        $out=New-Object -TypeName PSObject -Property @{
+            DistinguishedName=$entry.distinguishedName.Value;
+            Name=$entry.name.Value;
+            GivenName=$entry.givenName.Value;
+            Surname=$entry.sn.Value;
             Enabled=$enabled;
             SID=$sid;
-            SamAccountName=$($entry | Select -expand sAMAccountName);
-            ObjectGuid=$([Guid]$guidByteArr);
-            UserPrincipalName=$($entry | Select -expand userPrincipalName);
+            SamAccountName=$entry.sAMAccountName.Value;
+            ObjectGuid=$([Guid]$entry.objectGuid.Value);
+            UserPrincipalName=$entry.userPrincipalName.Value;
             PrimarySMTPAddress=$null;
         }
         if ($entry.proxyAddresses){
