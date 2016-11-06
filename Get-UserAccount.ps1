@@ -65,9 +65,10 @@ function LDAPQuery ([String]$identity){
     [String]$rootDSE="LDAP://$(([ADSI]'').distinguishedName)"
     [String]$filter=NewLDAPFilter -identity $identity -idType $idType
     $search=New-Object -TypeName DirectoryServices.DirectorySearcher
+    $search.SearchScope='Subtree'
     $search.SearchRoot=$rootDSE
     $search.Filter=$filter
-    [PSObject]$user=$search.FindOne()
+    [PSObject]$user=$search.FindAll()
     if(!$user){
         [String]$msg=[String]::Format(
             'No user found with identity: {0}. Filter used: {1}',
