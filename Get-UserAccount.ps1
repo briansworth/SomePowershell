@@ -58,6 +58,29 @@ function isAccountEnabled ([int32]$userAccountControl){
     }
 }
 
+function LDAPQuery ([String]$identity){
+    [String]$idType=GetIDType -identity $identity
+    [String]$rootDSE="LDAP://$(([ADSI]'').distinguishedName)"
+    [String]$filter=NewLDAPFilter -identity $identity -idType $idType
+    $search=New-Object -TypeName DirectoryServices.DirectorySearcher
+    $search.SearchRoot=$rootDSE
+    $search.Filter=$filter
+    [PSObject]$user=$search.FindOne()
+    if(!$user){
+        [String]$msg=[String]::Format(
+            'No user found with identity: {0}. Filter used: {1}',
+            "[$identity]",
+            "[$filter]"
+        )
+        Write-Error -Message $msg `
+            -TargetObject $identity `
+            -Category ObjectNotFound `
+            -ErrorAction Stop
+    }
+    [DirectoryServices.DirectoryEntry]$entry=$user.Path
+    return $entry
+}
+
 function Get-UserAccount {
     [CmdletBinding()]
     Param(
@@ -68,27 +91,9 @@ function Get-UserAccount {
         [String]$regex='\*'
         if ($identity -match $regex){
             Write-Error -Message 'Wildcards (*) are not supported' `
-              -ErrorAction Stop
+                -ErrorAction Stop
         }
-        [String]$idType=GetIDType -identity $identity
-        [String]$rootDSE="LDAP://$(([ADSI]'').distinguishedName)"
-        [String]$filter=NewLDAPFilter -identity $identity -idType $idType
-        $search=New-Object -TypeName DirectoryServices.DirectorySearcher
-        $search.SearchRoot=$rootDSE
-        $search.Filter=$filter
-        [PSObject]$user=$search.FindOne()
-        if(!$user){
-            [String]$msg=[String]::Format(
-                'No user found with identity: {0}. Filter used: {1}',
-                "[$identity]",
-                "[$filter]"
-            )
-            Write-Error -Message $msg `
-              -TargetObject $identity `
-              -Category ObjectNotFound `
-              -ErrorAction Stop
-        }
-        [DirectoryServices.DirectoryEntry]$entry=$user.Path
+        [DirectoryServices.DirectoryEntry]$entry=LDAPQuery -identity $identity
         [Byte[]]$guidByteArr=LDAPGuidToByteArray -guidArr $entry.objectGuid
         [bool]$enabled=isAccountEnabled `
           -userAccountControl ($entry | 
