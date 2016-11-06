@@ -6,6 +6,7 @@
         "$rootDSE" {$idType='dn'}
         "[@]" {$idType='mail'}
         "$guidRegex" {$idType='guid'}
+        "^S-\d-\d+-(\d+-){1,14}\d+$" {$idType='sid'}
         Default {$idType='samAccountName'}
     }
     return $idType
@@ -46,6 +47,9 @@ function NewLDAPFilter([String]$identity,[String]$idType) {
         'guid' {
             $identity=GuidToLDAPString -guid $identity
             [void]$filter.Append('objectGuid=')
+        }
+        'sid' {
+            [void]$filter.Append('objectSid=')
         }
         Default {
             [void]$filter.Append('samaccountname=')
