@@ -28,6 +28,12 @@ function LDAPGuidToByteArray([DirectoryServices.PropertyValueCollection]$guidArr
     return $byteArr
 }
 
+function ConvertBytesToSID ([Byte[]]$byteArr){
+    $sid=New-Object `
+      -TypeName Security.Principal.SecurityIdentifier($byteArr,0)
+    return $sid.Value
+}
+
 function NewLDAPFilter([String]$identity,[String]$idType) {
     [Text.StringBuilder]$filter='(&(objectClass=user)('
     switch ($idType){
@@ -95,6 +101,7 @@ function Get-UserAccount {
         }
         [DirectoryServices.DirectoryEntry]$entry=LDAPQuery -identity $identity
         [Byte[]]$guidByteArr=LDAPGuidToByteArray -guidArr $entry.objectGuid
+        [String]$sid=ConvertBytesToSID -byteArr ($entry | Select -expand objectSid)
         [bool]$enabled=isAccountEnabled `
           -userAccountControl ($entry | 
             Select -ExpandProperty userAccountControl)
@@ -105,6 +112,7 @@ function Get-UserAccount {
             GivenName=$($entry | Select -expand givenName);
             Surname=$($entry | Select -expand sn);
             Enabled=$enabled;
+            SID=$sid;
             SamAccountName=$($entry | Select -expand sAMAccountName);
             ObjectGuid=$([Guid]$guidByteArr);
             UserPrincipalName=$($entry | Select -expand userPrincipalName);
