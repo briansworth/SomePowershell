@@ -68,7 +68,7 @@ function LDAPQuery ([String]$identity){
     $search.SearchScope='Subtree'
     $search.SearchRoot=$rootDSE
     $search.Filter=$filter
-    [PSObject]$user=$search.FindAll()
+    [PSObject]$user=$search.FindOne()
     if(!$user){
         [String]$msg=[String]::Format(
             'No user found with identity: {0}. Filter used: {1}',
@@ -80,7 +80,7 @@ function LDAPQuery ([String]$identity){
             -Category ObjectNotFound `
             -ErrorAction Stop
     }
-    [DirectoryServices.DirectoryEntry]$entry=$user.Path
+    [DirectoryServices.DirectoryEntry]$entry=$user | Select -expand Path
     return $entry
 }
 
