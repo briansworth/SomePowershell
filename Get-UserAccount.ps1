@@ -27,6 +27,13 @@ function ConvertBytesToSID ([Byte[]]$byteArr){
     return $sid
 }
 
+function GetUserSchemaProperties{
+    $schema=[DirectoryServices.ActiveDirectory.ActiveDirectorySchema]::GetCurrentSchema()
+    [DirectoryServices.ActiveDirectory.ActiveDirectorySchemaClass]$uc=$schema.FindClass('user')
+    [DirectoryServices.ActiveDirectory.ReadOnlyActiveDirectorySchemaPropertyCollection]$p=$uc.GetAllProperties()
+    return $p
+}
+
 function NewLDAPFilter([String]$identity,[String]$idType) {
     [Text.StringBuilder]$filter='(&(objectClass=user)('
     switch ($idType){
@@ -63,6 +70,10 @@ function isAccountEnabled ([int32]$userAccountControl){
 function LDAPQuery ([String]$identity){
     [String]$idType=GetIDType -identity $identity
     [String]$rootDSE="LDAP://$(([ADSI]'').distinguishedName)"
+    if ($rootDSE -eq 'LDAP://'){
+        [String]$msg='Connection to domain could not be made.'
+        Write-Error -Message $msg -Category ConnectionError -ErrorAction Stop
+    }
     [String]$filter=NewLDAPFilter -identity $identity -idType $idType
     $search=New-Object -TypeName DirectoryServices.DirectorySearcher
     $search.SearchScope='Subtree'
