@@ -3,11 +3,11 @@
     [String]$guidRegex="^[{(]?[0-9A-F]{8}[-]?([0-9A-F]{4}[-]?){3}[0-9A-F]{12}[)}]?$"
     [String]$idType=''
     switch -Regex ($identity) {
-        "$rootDSE" {$idType='dn'}
+        "$rootDSE" {$idType='distinguishedName'}
         "[@]" {$idType='mail'}
-        "$guidRegex" {$idType='guid'}
-        "^S-\d-\d+-(\d+-){1,14}\d+$" {$idType='sid'}
-        Default {$idType='samAccountName'}
+        "$guidRegex" {$idType='objectGuid'}
+        "^S-\d-\d+-(\d+-){1,14}\d+$" {$idType='objectSid'}
+        Default {$idType='sAMAccountName'}
     }
     return $idType
 }
@@ -30,33 +30,17 @@ function ConvertBytesToSID ([Byte[]]$byteArr){
 function GetUserSchemaProperties{
     $schema=[DirectoryServices.ActiveDirectory.ActiveDirectorySchema]::GetCurrentSchema()
     [DirectoryServices.ActiveDirectory.ActiveDirectorySchemaClass]$uc=$schema.FindClass('user')
-    [DirectoryServices.ActiveDirectory.ReadOnlyActiveDirectorySchemaPropertyCollection]$p=$uc.GetAllProperties()
-    return $p
+    #[DirectoryServices.ActiveDirectory.ReadOnlyActiveDirectorySchemaPropertyCollection]$p=$uc.GetAllProperties()
+    #return $p
+    return $uc.GetAllProperties()
 }
 
 function NewLDAPFilter([String]$identity,[String]$idType) {
-    [Text.StringBuilder]$filter='(&(objectClass=user)('
-    switch ($idType){
-        'dn' {
-            [void]$filter.Append('distinguishedName=')
-        }
-        'mail' {
-            [void]$filter.Append('proxyAddresses=SMTP:')
-        }
-        'guid' {
-            $identity=GuidToLDAPString -guid $identity
-            [void]$filter.Append('objectGuid=')
-        }
-        'sid' {
-            [void]$filter.Append('objectSid=')
-        }
-        Default {
-            [void]$filter.Append('samaccountname=')
-        }
+    if($idType -eq 'mail' -and $identity -notmatch '^SMTP:'){
+        $identity="SMTP:$identity"
     }
-    [void]$filter.Append("$identity))")
-
-    return $filter.ToString()
+    [String]$filter="(&(objectClass=user)($idType=$identity))"
+    return $filter
 }
 
 function isAccountEnabled ([int32]$userAccountControl){
