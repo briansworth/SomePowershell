@@ -38,6 +38,8 @@ function GetUserSchemaProperties{
 function NewLDAPFilter([String]$identity,[String]$idType) {
     if($idType -eq 'mail' -and $identity -notmatch '^SMTP:'){
         $identity="SMTP:$identity"
+    }elseif($idType -eq 'objectGuid'){
+        $identity=GuidToLDAPString $identity
     }
     [String]$filter="(&(objectClass=user)($idType=$identity))"
     return $filter
