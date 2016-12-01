@@ -30,9 +30,41 @@ function ConvertBytesToSID ([Byte[]]$byteArr){
 function GetUserSchemaProperties{
     $schema=[DirectoryServices.ActiveDirectory.ActiveDirectorySchema]::GetCurrentSchema()
     [DirectoryServices.ActiveDirectory.ActiveDirectorySchemaClass]$uc=$schema.FindClass('user')
-    #[DirectoryServices.ActiveDirectory.ReadOnlyActiveDirectorySchemaPropertyCollection]$p=$uc.GetAllProperties()
-    #return $p
-    return $uc.GetAllProperties()
+
+    #searching for these properties results in an error
+    ##an error also occurs when including these properties in get-aduser
+    [Collections.ArrayList]$exclude=@(
+        'tokenGroups',
+        'tokenGroupsGlobalAndUniversal',
+        'tokenGroupsNoGCAcceptable',
+        'msds-memberOfTransitive',
+        'msds-memberTransitive'
+    )
+    [Collections.ArrayList]$allProps=$uc.GetAllProperties()
+    #need this and the additional .RemoveAt($index) for PS v2 compatibility
+    [Collections.ArrayList]$allPropName=$allProps | Select -expand Name
+    #remove the exclude entries from the returned collection
+    foreach($entry in $exclude){
+        [int32]$index=$allPropName.IndexOf($entry)
+        if($index -ne -1){
+            $allProps.RemoveAt($index)
+            $allPropName.RemoveAt($index)
+        }
+    }
+    return $allProps
+}
+
+function isUserPropertyValid([String[]]$properties){
+    [Collections.ArrayList]$schema=GetUserSchemaProperties
+    [Collections.ArrayList]$schemaNames=$schema | foreach{
+        $_.Name.ToLower()
+    }
+    foreach($prop in $properties){
+        if(!($schemaNames.Contains($prop.ToLower()))){
+            return $false
+        }
+    }
+    return $true
 }
 
 function NewLDAPFilter([String]$identity,[String]$idType) {
@@ -53,18 +85,34 @@ function isAccountEnabled ([int32]$userAccountControl){
     }
 }
 
-function LDAPQuery ([String]$identity){
+function LDAPQuery {
+    [CmdletBinding()]
+    Param(
+    [String]$identity,
+    
+    [String[]]$properties,
+
+    [String]$searchBase
+    )
+
     [String]$idType=GetIDType -identity $identity
-    [String]$rootDSE="LDAP://$(([ADSI]'').distinguishedName)"
-    if ($rootDSE -eq 'LDAP://'){
-        [String]$msg='Connection to domain could not be made.'
-        Write-Error -Message $msg -Category ConnectionError -ErrorAction Stop
-    }
     [String]$filter=NewLDAPFilter -identity $identity -idType $idType
     $search=New-Object -TypeName DirectoryServices.DirectorySearcher
     $search.SearchScope='Subtree'
-    $search.SearchRoot=$rootDSE
+    $search.SearchRoot=$searchBase
     $search.Filter=$filter
+    if($PSBoundParameters.ContainsKey('properties')){
+        if($properties -eq '*'){
+            $properties=GetUserSchemaProperties | Select -expand Name
+        }
+        if(!(isUserPropertyValid -properties $properties)){
+            [String]$msg="One or more of the properties is invalid"
+            Write-Error -Message $msg -ErrorAction Stop
+        }
+        foreach($p in $properties){
+            [void]$search.PropertiesToLoad.Add($p)
+        }
+    }
     [PSObject]$user=$search.FindOne()
     if(!$user){
         [String]$msg=[String]::Format(
@@ -77,14 +125,41 @@ function LDAPQuery ([String]$identity){
             -Category ObjectNotFound `
             -ErrorAction Stop
     }
-    [DirectoryServices.DirectoryEntry]$entry=$user | Select -expand Path
-    return $entry
+    return $user
+}
+
+function getSearchBase {
+    [CmdletBinding()]
+    Param(
+        [AllowNull()]
+        [String]$searchBase
+    )
+    if (!$searchBase){
+            [String]$searchBase="LDAP://$(([ADSI]'').distinguishedName)"
+        if ($searchBase -eq 'LDAP://'){
+            [String]$msg='Connection to domain could not be made.'
+            Write-Error -Message $msg `
+                -Category ConnectionError `
+                -ErrorAction Stop
+        }
+    }
 }
 
 function Get-UserAccount {
     [CmdletBinding()]
     Param(
-        [String]$identity
+        [Parameter(
+            Mandatory=$true,
+            Position=0,
+            ValueFromPipeline=$true
+        )]
+        [String]$identity,
+
+        [Parameter(Position=1)]     
+        [String[]]$properties,
+
+        [Parameter(Position=2)]
+        [String]$searchBase=$null
     )
     Begin{}
     Process{
@@ -93,7 +168,16 @@ function Get-UserAccount {
             Write-Error -Message 'Wildcards (*) are not supported' `
                 -ErrorAction Stop
         }
-        [DirectoryServices.DirectoryEntry]$entry=LDAPQuery -identity $identity
+        [Collections.HashTable]$ldapParam=@{
+            'identity'=$identity;
+            'ErrorAction'='Stop';
+        }
+        if($PSBoundParameters.ContainsKey('properties')){
+            $ldapParam.Add('properties',$properties)
+        }
+        [DirectoryServices.SearchResult]$result=LDAPQuery @ldapParam
+        [DirectoryServices.DirectoryEntry]$entry=$result | Select -expand Path
+
         [bool]$enabled=isAccountEnabled `
           -userAccountControl $entry.userAccountControl.Value
 
@@ -107,13 +191,23 @@ function Get-UserAccount {
             SamAccountName=$entry.sAMAccountName.Value;
             ObjectGuid=$([Guid]$entry.objectGuid.Value);
             UserPrincipalName=$entry.userPrincipalName.Value;
-            PrimarySMTPAddress=$null;
         }
-        if ($entry.proxyAddresses){
-            [String]$mail=$((($entry.proxyAddresses | 
-                Where {$_ -clike 'SMTP:*'}) -replace 'smtp:',''))
-            if ($mail){
-                $out.PrimarySMTPAddress=$mail
+        if($PSBoundParameters.ContainsKey('properties')){
+            if($properties -eq '*'){
+                Write-Debug 'Properties eq *'
+                $properties=GetUserSchemaProperties | Select -expand Name
+            }
+            [Collections.HashTable]$hash=$result | Select -expand Properties
+            foreach($p in $properties){
+                $value=$($hash.$($p.ToLower()) | Select -expand $_)
+                if(!$value){
+                    continue
+                }
+                Add-Member -MemberType NoteProperty `
+                  -InputObject $out `
+                  -Name $p `
+                  -Value $value `
+                  -Force
             }
         }
         Write-Output $out
